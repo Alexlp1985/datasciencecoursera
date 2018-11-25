@@ -1,0 +1,164 @@
+---
+title: "Prediction Assignment Writeup (Machine Learning)"
+author: "Alexey Pogorelov"
+date: "25/11/2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+require(AppliedPredictiveModeling)
+require(xlsx)
+require(dplyr)
+require(caret)
+```
+
+## Data analysis, pre-processing
+
+1. Download the data with read.csv function.
+```{r echo=TRUE}
+pml_training<-read.csv("~/Downloads/pml-training.csv")
+```
+2. The data contains 19622 obs and 160 vars. 
+```{r echo=TRUE}
+dim(pml_training)
+```
+
+3. Having looked through the data, i've noticed that it contains lots of NA observations and empty cells. 
+```{r include=FALSE}
+glimpse(pml_training)
+```
+
+4. I downloaded pml_training set one more time, but this time treating all empty cells as NAs
+```{r echo=TRUE}
+pml_training<-read.csv("/Users/alexeypogorelov/Downloads/pml-training.csv",na.strings = c('',' ','NA'))
+```
+
+5. I've checked and identified those cells, with the largest number of NAs.
+```{r echo=TRUE}
+pml_training1<-pml_training %>%
+  summarise_all(funs(sum(is.na(.))/19622))
+```
+6. I removed those vars, in which share of NAs exceed 90%.
+```{r echo=TRUE}
+pml_training<-pml_training[,-which(pml_training1>0.9)]
+```
+
+7. The new data.frame contains only 60 variables
+```{r echo=TRUE}
+dim(pml_training)
+```
+
+8. In order to finish clean-up procedure i also removed those vars that give no additional information for our modeling purpose. These are first 7 vars that represent the name of the person, time, new_window, observation number and etc.
+
+```{r echo=TRUE}
+pml_training<-pml_training[,-c(1:7)]
+```
+
+9. The new data.frame contains only 53 variables
+```{r}
+dim(pml_training)
+```
+
+##Fitting the model
+
+Next step, i partition the data into train and test subsets. 
+
+```{r}
+set1<-createDataPartition(y=pml_training$classe,p=0.7,list = FALSE)
+
+trainset1<-pml_training[set1,]
+testset1<-pml_training[-set1,]
+```
+
+I set resampling parameters for repeated cross-validation.
+
+```{r}
+fitControl <- trainControl(method = "repeatedcv", number = 10, repeats = 5)
+```
+
+Biulding model1. Since model building takes a lot of time, i will load pre-run models from the Global environment.
+
+```{r}
+load("~/Documents/data1.RData")
+```
+Code for building the model 1. Rpart model.
+
+```{r cache=TRUE,eval=FALSE}
+
+model1<-train(classe~.,method="rpart",data=trainset1,trControl=fitControl)
+print(model1$finalModel)
+```
+### Model1 output. Rpart model
+```{r }
+plot(model1)
+plot(model1$finalModel,uniform = TRUE,
+     main="")
+text(model1$finalModel,use.n = TRUE,all = TRUE,cex=0.5)
+table(predict(model1,testset1),testset1$classe)
+
+```
+
+Code for building the model 2. GBM model.
+
+```{r cache=TRUE,eval=FALSE}
+gbmGrid <-  expand.grid(interaction.depth = c(1,2,3), 
+                        n.trees = (1:10)*20, 
+                        shrinkage = 0.1,
+                        n.minobsinnode = 20)
+model2<-train(classe~.,method="gbm",data=trainset1,verbose=FALSE,tuneGrid = gbmGrid)
+
+print(model2$finalModel)
+```
+### Model2 output. GBM model.
+```{r }
+plot(model2)
+table(predict(model2,testset1),testset1$classe)
+```
+
+Code for building the model 3. Rpart2 model.
+
+```{r cache=TRUE,eval=FALSE}
+model3<-train(classe~.,method="rpart2",data=trainset1,trControl=fitControl,tuneLength=10)
+
+print(model3$finalModel)
+
+```
+### Model3 output. Rpart2 model.
+```{r }
+plot(model3)
+table(predict(model3,testset1),testset1$classe)
+
+```
+
+Code for building the model 4. ctree2 model.
+
+```{r cache=TRUE,eval=FALSE}
+model4<-train(classe~.,method="ctree2",data=trainset1,trControl=fitControl,tuneLength=10)
+
+print(model4$finalModel)
+
+```
+### Model3 output. ctree2 model.
+```{r }
+
+plot(model4)
+table(predict(model4,testset1),testset1$classe)
+
+```
+
+## Confusion matrix output for all four models.
+
+```{r}
+confusionMatrix(testset1$classe,predict(model1,testset1))$overall['Accuracy']
+confusionMatrix(testset1$classe,predict(model2,testset1))$overall['Accuracy']
+confusionMatrix(testset1$classe,predict(model3,testset1))$overall['Accuracy']
+confusionMatrix(testset1$classe,predict(model4,testset1))$overall['Accuracy']
+
+confusionMatrix(testset1$classe,predict(model1,testset1))$table
+confusionMatrix(testset1$classe,predict(model2,testset1))$table
+confusionMatrix(testset1$classe,predict(model3,testset1))$table
+confusionMatrix(testset1$classe,predict(model4,testset1))$table
+```
+
+## Model 2 is the best model
